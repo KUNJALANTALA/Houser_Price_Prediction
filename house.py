@@ -6,6 +6,7 @@ from sklearn.linear_model import LinearRegression
 
 st.set_page_config(page_title="Housing Dashboard", layout="wide")
 
+
 # ------------------ LOAD DATA ------------------
 @st.cache_data
 def load_data():
@@ -15,11 +16,13 @@ def load_data():
         st.error(f"Error loading file: {e}")
         return pd.DataFrame()
 
+
 df = load_data()
 
 # ------------------ SIDEBAR ------------------
 st.sidebar.title("🏠 Housing App")
-page = st.sidebar.radio("Go To", ["Home", "Explore", "Predict"])
+page = st.sidebar.radio("Go To", ["Home", "Explore", "Predict", "scanner"])
+
 
 # ------------------ HOME PAGE ------------------
 def show_home():
@@ -29,10 +32,12 @@ def show_home():
         st.error("No data available")
         return
 
-    st.markdown("""
+    st.markdown(
+        """
     Welcome to the **Housing Price Prediction System**  
     Analyze housing data and predict prices.
-    """)
+    """
+    )
 
     col1, col2, col3, col4 = st.columns(4)
 
@@ -44,6 +49,7 @@ def show_home():
     st.markdown("---")
     st.subheader("📂 Dataset Preview")
     st.dataframe(df.head(), use_container_width=True)
+
 
 # ------------------ EXPLORE PAGE ------------------
 def show_explore():
@@ -88,6 +94,7 @@ def show_explore():
     sns.histplot(df["price"], kde=True, ax=ax5)
     st.pyplot(fig5)
 
+
 # ------------------ PREDICTION PAGE ------------------
 def show_prediction():
     st.title("🔮 House Price Prediction")
@@ -110,37 +117,151 @@ def show_prediction():
 
     df_model = df.copy()
 
-    df_model["furnishingstatus"] = df_model["furnishingstatus"].map({
-        "furnished": 2,
-        "semi-furnished": 1,
-        "unfurnished": 0
-    })
+    df_model["furnishingstatus"] = df_model["furnishingstatus"].map(
+        {"furnished": 2, "semi-furnished": 1, "unfurnished": 0}
+    )
 
-    X = df_model[["area", "bedrooms", "bathrooms", "stories", "parking", "furnishingstatus"]]
+    X = df_model[
+        ["area", "bedrooms", "bathrooms", "stories", "parking", "furnishingstatus"]
+    ]
     y = df_model["price"]
 
     model = LinearRegression()
     model.fit(X, y)
 
-    furnishing_map = {
-        "furnished": 2,
-        "semi-furnished": 1,
-        "unfurnished": 0
-    }
+    furnishing_map = {"furnished": 2, "semi-furnished": 1, "unfurnished": 0}
 
-    input_data = [[
-        area,
-        bedrooms,
-        bathrooms,
-        stories,
-        parking,
-        furnishing_map[furnishing]
-    ]]
+    input_data = [
+        [area, bedrooms, bathrooms, stories, parking, furnishing_map[furnishing]]
+    ]
 
     if st.button("Predict Price 💰"):
         prediction = model.predict(input_data)[0]
         st.success(f"Estimated Price: ₹ {prediction:,.0f}")
 
+
+# ------------------ BULK SCANNER PAGE ------------------
+def show_bulkscanner():
+    st.title("📂 Bulk House Price Prediction")
+
+    if df.empty:
+        st.error("No data available")
+        return
+
+    # ------------------ SAMPLE FILE DOWNLOADS ------------------
+    st.subheader("📥 Download Sample Files")
+
+    sample_df = pd.DataFrame({
+        "area": [1200, 1500],
+        "bedrooms": [2, 3],
+        "bathrooms": [2, 2],
+        "stories": [1, 2],
+        "parking": [1, 2],
+        "furnishingstatus": ["furnished", "semi-furnished"]
+    })
+
+    col1, col2, col3 = st.columns(3)
+
+    # CSV
+    with col1:
+        csv_data = sample_df.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="⬇ Download CSV file",
+            data=csv_data,
+            file_name="sample_house_data.csv",
+            mime="text/csv"
+        )
+
+    # Excel
+    with col2:
+        import io
+        excel_buffer = io.BytesIO()
+        with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+            sample_df.to_excel(writer, index=False, sheet_name="SampleData")
+        excel_data = excel_buffer.getvalue()
+
+        st.download_button(
+            label="⬇ Download Excel file",
+            data=excel_data,
+            file_name="sample_house_data.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+    # JSON
+    with col3:
+        json_data = sample_df.to_json(orient="records", indent=2)
+        st.download_button(
+            label="⬇ Download JSON file",
+            data=json_data,
+            file_name="sample_house_data.json",
+            mime="application/json"
+        )
+
+    st.markdown("---")
+
+    # ------------------ FILE UPLOAD ------------------
+    uploaded_file = st.file_uploader("📂 Upload CSV File", type=["csv"])
+
+    if uploaded_file is not None:
+        bulk_df = pd.read_csv(uploaded_file)
+
+        st.subheader("📊 Uploaded Data Preview")
+        st.dataframe(bulk_df.head())
+
+        expected_columns = [
+            "area", "bedrooms", "bathrooms",
+            "stories", "parking", "furnishingstatus"
+        ]
+
+        if all(col in bulk_df.columns for col in expected_columns):
+
+            st.success("✅ File format is correct!")
+
+            furnishing_map = {
+                "furnished": 2,
+                "semi-furnished": 1,
+                "unfurnished": 0
+            }
+
+            bulk_df["furnishingstatus"] = bulk_df["furnishingstatus"].map(furnishing_map)
+
+            # Train model
+            df_model = df.copy()
+            df_model["furnishingstatus"] = df_model["furnishingstatus"].map(furnishing_map)
+
+            X = df_model[[
+                "area", "bedrooms", "bathrooms",
+                "stories", "parking", "furnishingstatus"
+            ]]
+            y = df_model["price"]
+
+            model = LinearRegression()
+            model.fit(X, y)
+
+            if st.button("🚀 Predict Bulk Prices"):
+                try:
+                    predictions = model.predict(bulk_df[X.columns])
+                    bulk_df["Predicted_Price"] = predictions
+
+                    st.subheader("📈 Prediction Results")
+                    st.dataframe(bulk_df)
+
+                    # Download results
+                    result_csv = bulk_df.to_csv(index=False).encode("utf-8")
+
+                    st.download_button(
+                        label="⬇ Download Results",
+                        data=result_csv,
+                        file_name="bulk_predictions.csv",
+                        mime="text/csv"
+                    )
+
+                except Exception as e:
+                    st.error(f"❌ Error: {e}")
+
+        else:
+            st.error("❌ CSV must contain:")
+            st.write(expected_columns)            
 # ------------------ NAVIGATION ------------------
 if page == "Home":
     show_home()
@@ -150,3 +271,6 @@ elif page == "Explore":
 
 elif page == "Predict":
     show_prediction()
+
+elif page == "scanner":
+    show_bulkscanner()
